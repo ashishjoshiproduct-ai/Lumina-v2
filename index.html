@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lumina - Read & Ask</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
   <style>
     * {
       margin: 0;
@@ -77,6 +78,36 @@
       max-width: 100%;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       background: white;
+    }
+
+    .pdf-page {
+      position: relative;
+      display: inline-block;
+    }
+
+    .textLayer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      opacity: 0.2;
+      line-height: 1;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      user-select: text;
+    }
+
+    .textLayer span {
+      color: transparent;
+      position: absolute;
+      white-space: pre;
+      cursor: text;
+      transform-origin: 0% 0%;
+    }
+
+    .textLayer span:hover {
+      background: rgba(72, 133, 237, 0.1);
     }
 
     .pdf-footer {
@@ -249,7 +280,10 @@
       </div>
 
       <div class="pdf-canvas-container">
-        <canvas id="pdf-canvas"></canvas>
+        <div class="pdf-page">
+          <canvas id="pdf-canvas"></canvas>
+          <div class="textLayer" id="text-layer"></div>
+        </div>
       </div>
 
       <div class="pdf-footer">
@@ -314,19 +348,38 @@
       const page = await pdfDoc.getPage(num);
       const canvas = document.getElementById('pdf-canvas');
       const ctx = canvas.getContext('2d');
+      const textLayer = document.getElementById('text-layer');
 
       const viewport = page.getViewport({ scale: 1.5 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
+      // Render canvas
       await page.render({
         canvasContext: ctx,
         viewport: viewport
       }).promise;
 
-      // Extract text from page
+      // Get text content
       const textContent = await page.getTextContent();
       pageText = textContent.items.map(item => item.str).join(' ');
+
+      // Render text layer for selection/copy
+      textLayer.innerHTML = '';
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      
+      textContent.items.forEach(item => {
+        const span = document.createElement('span');
+        span.textContent = item.str;
+        span.style.left = item.transform[4] + 'px';
+        span.style.top = item.transform[5] + 'px';
+        span.style.fontSize = Math.sqrt(item.height * item.height + item.width * item.width) + 'px';
+        span.style.fontFamily = item.fontName || 'sans-serif';
+        textLayerDiv.appendChild(span);
+      });
+      
+      textLayer.innerHTML = textLayerDiv.innerHTML;
 
       document.getElementById('page-num').textContent = num;
       updateNavButtons();

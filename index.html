@@ -355,6 +355,8 @@
       const viewport = page.getViewport({ scale: 1.5 });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
+      textLayer.style.width = viewport.width + 'px';
+      textLayer.style.height = viewport.height + 'px';
 
       // Render canvas
       await page.render({
@@ -362,20 +364,41 @@
         viewport: viewport
       }).promise;
 
-      // Get text content for AI
+      // Get text content
       const textContent = await page.getTextContent();
       pageText = textContent.items.map(item => item.str).join(' ');
 
-      // Render text layer using pdf.js utility
+      // Render text layer with proper positioning
       textLayer.innerHTML = '';
       
-      const textLayerBuilder = new pdfjsLib.TextLayerBuilder({
-        textLayerDiv: textLayer,
-        pageIndex: num - 1
+      const scale = viewport.scale;
+      const offsetX = viewport.convertToViewportPoint(0, 0)[0];
+      const offsetY = viewport.convertToViewportPoint(0, 0)[1];
+
+      textContent.items.forEach(item => {
+        if (!item.str.trim()) return;
+
+        const span = document.createElement('span');
+        span.textContent = item.str;
+        
+        // Calculate position using transform matrix
+        const tx = item.transform[4] * scale;
+        const ty = (page.view[3] - item.transform[5]) * scale;
+        const width = (item.width * scale);
+        const height = (item.height * scale);
+
+        span.style.position = 'absolute';
+        span.style.left = tx + 'px';
+        span.style.top = ty + 'px';
+        span.style.fontSize = height + 'px';
+        span.style.color = 'transparent';
+        span.style.whiteSpace = 'pre';
+        span.style.cursor = 'text';
+        span.style.padding = '0';
+        span.style.margin = '0';
+
+        textLayer.appendChild(span);
       });
-      
-      textLayerBuilder.setTextContent(textContent);
-      textLayerBuilder.render();
 
       document.getElementById('page-num').textContent = num;
       updateNavButtons();

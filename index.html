@@ -37,16 +37,17 @@
     }
 
     .pdf-header {
-      padding: 16px;
+      padding: 12px 16px;
       border-bottom: 1px solid #ddd;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #fafafa;
+      gap: 12px;
     }
 
     .pdf-header h1 {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       color: #333;
       flex: 1;
@@ -55,7 +56,7 @@
       white-space: nowrap;
     }
 
-    .upload-input {
+    .upload-btn {
       padding: 8px 12px;
       border: 1px solid #ddd;
       border-radius: 4px;
@@ -63,27 +64,37 @@
       cursor: pointer;
       font-size: 12px;
       color: #666;
+      transition: all 0.2s;
     }
 
-    .pdf-canvas-container {
+    .upload-btn:hover {
+      background: #f0f0f0;
+      border-color: #999;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .pdf-viewer {
       flex: 1;
       overflow: auto;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      padding: 16px;
       background: #f5f5f5;
     }
 
-    canvas {
-      max-width: 100%;
+    #pdf-container {
+      display: none;
+    }
+
+    .page {
+      margin: 16px auto;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      position: relative;
       background: white;
     }
 
-    .pdf-page {
-      position: relative;
-      display: inline-block;
+    .page canvas {
+      display: block;
     }
 
     .textLayer {
@@ -97,7 +108,6 @@
       -webkit-user-select: text;
       -moz-user-select: text;
       user-select: text;
-      z-index: 1;
     }
 
     .textLayer span {
@@ -109,7 +119,6 @@
 
     .textLayer span:hover {
       background: rgba(72, 133, 237, 0.2);
-      opacity: 1;
     }
 
     .pdf-footer {
@@ -143,8 +152,9 @@
       border-color: #999;
     }
 
-    button:active {
-      background: #e0e0e0;
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .page-info {
@@ -173,6 +183,7 @@
       font-size: 14px;
       font-weight: 600;
       color: #333;
+      margin-bottom: 8px;
     }
 
     .api-key-input {
@@ -181,7 +192,6 @@
       border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 12px;
-      margin-top: 8px;
       font-family: monospace;
     }
 
@@ -249,6 +259,7 @@
     .loading {
       color: #666;
       font-style: italic;
+      font-size: 12px;
     }
 
     .error {
@@ -265,10 +276,6 @@
       text-align: center;
       padding: 20px;
     }
-
-    #file-input {
-      display: none;
-    }
   </style>
 </head>
 <body>
@@ -278,14 +285,11 @@
       <div class="pdf-header">
         <h1 id="filename">Load a PDF to begin</h1>
         <input type="file" id="file-input" accept=".pdf">
-        <button class="upload-input" onclick="document.getElementById('file-input').click()">Upload PDF</button>
+        <button class="upload-btn" onclick="document.getElementById('file-input').click()">Upload PDF</button>
       </div>
 
-      <div class="pdf-canvas-container">
-        <div class="pdf-page">
-          <canvas id="pdf-canvas"></canvas>
-          <div class="textLayer" id="text-layer"></div>
-        </div>
+      <div class="pdf-viewer" id="pdf-viewer">
+        <div id="pdf-container"></div>
       </div>
 
       <div class="pdf-footer">
@@ -320,14 +324,12 @@
   </div>
 
   <script>
-    // PDF.js setup
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     let pdfDoc = null;
     let currentPage = 1;
-    let pageText = '';
+    let pageTexts = {}; // Store text for each page
 
-    // File upload
     document.getElementById('file-input').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -340,6 +342,8 @@
     async function loadPDF(arrayBuffer) {
       pdfDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
       document.getElementById('total-pages').textContent = pdfDoc.numPages;
+      document.getElementById('pdf-container').innerHTML = '';
+      pageTexts = {};
       currentPage = 1;
       renderPage(1);
     }
@@ -348,57 +352,61 @@
       if (!pdfDoc) return;
 
       const page = await pdfDoc.getPage(num);
-      const canvas = document.getElementById('pdf-canvas');
-      const ctx = canvas.getContext('2d');
-      const textLayer = document.getElementById('text-layer');
-
       const viewport = page.getViewport({ scale: 1.5 });
+
+      // Get text content for AI
+      const textContent = await page.getTextContent();
+      pageTexts[num] = textContent.items.map(item => item.str).join(' ');
+
+      // Create page container
+      const pageDiv = document.createElement('div');
+      pageDiv.className = 'page';
+      pageDiv.style.width = viewport.width + 'px';
+      pageDiv.style.height = viewport.height + 'px';
+
+      // Canvas for rendering
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      textLayer.style.width = viewport.width + 'px';
-      textLayer.style.height = viewport.height + 'px';
 
-      // Render canvas
+      // Render PDF page
       await page.render({
         canvasContext: ctx,
         viewport: viewport
       }).promise;
 
-      // Get text content
-      const textContent = await page.getTextContent();
-      pageText = textContent.items.map(item => item.str).join(' ');
+      // Text layer for selection
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
 
-      // Render text layer with proper positioning
-      textLayer.innerHTML = '';
-      
+      // Build text layer with proper positioning
       const scale = viewport.scale;
-      const offsetX = viewport.convertToViewportPoint(0, 0)[0];
-      const offsetY = viewport.convertToViewportPoint(0, 0)[1];
+      const pageHeight = page.view[3];
 
       textContent.items.forEach(item => {
         if (!item.str.trim()) return;
 
         const span = document.createElement('span');
         span.textContent = item.str;
-        
-        // Calculate position using transform matrix
-        const tx = item.transform[4] * scale;
-        const ty = (page.view[3] - item.transform[5]) * scale;
-        const width = (item.width * scale);
-        const height = (item.height * scale);
 
-        span.style.position = 'absolute';
-        span.style.left = tx + 'px';
-        span.style.top = ty + 'px';
-        span.style.fontSize = height + 'px';
-        span.style.color = 'transparent';
-        span.style.whiteSpace = 'pre';
-        span.style.cursor = 'text';
-        span.style.padding = '0';
-        span.style.margin = '0';
+        // Transform coordinates
+        const transform = item.transform;
+        const x = transform[4] * scale;
+        const y = (pageHeight - transform[5]) * scale;
+        const width = item.width * scale;
+        const height = item.height * scale;
 
-        textLayer.appendChild(span);
+        span.style.left = x + 'px';
+        span.style.top = y + 'px';
+        span.style.fontSize = (height || 12) + 'px';
+
+        textLayerDiv.appendChild(span);
       });
+
+      pageDiv.appendChild(canvas);
+      pageDiv.appendChild(textLayerDiv);
+      document.getElementById('pdf-container').appendChild(pageDiv);
 
       document.getElementById('page-num').textContent = num;
       updateNavButtons();
@@ -412,6 +420,7 @@
     function prevPage() {
       if (currentPage > 1) {
         currentPage--;
+        document.getElementById('pdf-container').innerHTML = '';
         renderPage(currentPage);
       }
     }
@@ -419,6 +428,7 @@
     function nextPage() {
       if (currentPage < pdfDoc.numPages) {
         currentPage++;
+        document.getElementById('pdf-container').innerHTML = '';
         renderPage(currentPage);
       }
     }
@@ -438,6 +448,7 @@
         return;
       }
 
+      const pageText = pageTexts[currentPage];
       if (!pageText) {
         alert('Please load a PDF first');
         return;
@@ -450,7 +461,7 @@
       container.innerHTML = '<div class="loading">Thinking...</div>';
 
       try {
-        const systemPrompt = `You are a helpful AI assistant for reading papers and documents. The user is reading page ${currentPage} of a document and has a question about what they're seeing. Answer their question based on the text provided, keeping answers concise and clear.`;
+        const systemPrompt = `You are a helpful AI assistant for reading papers and documents. The user is reading page ${currentPage} and has a question about what they're seeing. Answer their question based on the text provided, keeping answers concise and clear.`;
 
         const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey, {
           method: 'POST',
@@ -463,7 +474,7 @@
             },
             contents: [{
               parts: [{
-                text: `Document text from page ${currentPage}:\n\n${pageText}\n\nUser question: ${question}`
+                text: `Text from page ${currentPage}:\n\n${pageText}\n\nQuestion: ${question}`
               }]
             }]
           })
@@ -491,7 +502,6 @@
       return div.innerHTML;
     }
 
-    // Allow Enter to submit
     document.getElementById('question').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.ctrlKey) {
         askAI();

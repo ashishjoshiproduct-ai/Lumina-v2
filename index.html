@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lumina - Read & Ask</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
   <style>
     * {
@@ -91,11 +92,12 @@
       top: 0;
       right: 0;
       bottom: 0;
-      opacity: 0.2;
+      opacity: 0;
       line-height: 1;
       -webkit-user-select: text;
       -moz-user-select: text;
       user-select: text;
+      z-index: 1;
     }
 
     .textLayer span {
@@ -103,11 +105,11 @@
       position: absolute;
       white-space: pre;
       cursor: text;
-      transform-origin: 0% 0%;
     }
 
     .textLayer span:hover {
-      background: rgba(72, 133, 237, 0.1);
+      background: rgba(72, 133, 237, 0.2);
+      opacity: 1;
     }
 
     .pdf-footer {
@@ -360,26 +362,20 @@
         viewport: viewport
       }).promise;
 
-      // Get text content
+      // Get text content for AI
       const textContent = await page.getTextContent();
       pageText = textContent.items.map(item => item.str).join(' ');
 
-      // Render text layer for selection/copy
+      // Render text layer using pdf.js utility
       textLayer.innerHTML = '';
-      const textLayerDiv = document.createElement('div');
-      textLayerDiv.className = 'textLayer';
       
-      textContent.items.forEach(item => {
-        const span = document.createElement('span');
-        span.textContent = item.str;
-        span.style.left = item.transform[4] + 'px';
-        span.style.top = item.transform[5] + 'px';
-        span.style.fontSize = Math.sqrt(item.height * item.height + item.width * item.width) + 'px';
-        span.style.fontFamily = item.fontName || 'sans-serif';
-        textLayerDiv.appendChild(span);
+      const textLayerBuilder = new pdfjsLib.TextLayerBuilder({
+        textLayerDiv: textLayer,
+        pageIndex: num - 1
       });
       
-      textLayer.innerHTML = textLayerDiv.innerHTML;
+      textLayerBuilder.setTextContent(textContent);
+      textLayerBuilder.render();
 
       document.getElementById('page-num').textContent = num;
       updateNavButtons();
